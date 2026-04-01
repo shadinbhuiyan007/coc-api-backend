@@ -5,12 +5,9 @@ import threading
 import time
 from datetime import datetime
 
-import nest_asyncio
 import coc
 from flask import Flask, jsonify
 from flask_cors import CORS
-
-nest_asyncio.apply()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -22,52 +19,14 @@ COC_EMAIL = os.environ.get("COC_EMAIL")
 COC_PASSWORD = os.environ.get("COC_PASSWORD")
 CLAN_TAG = os.environ.get("CLAN_TAG", "")
 
-coc_client = None
-client_lock = threading.Lock()
-
-
-def get_coc_client():
-    global coc_client
-    with client_lock:
-        if coc_client is None:
-            coc_client = coc.Client(key_names="FlaskAPI", key_count=1)
-        return coc_client
-
 
 def run_async(coro):
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     try:
         return loop.run_until_complete(coro)
     finally:
         loop.close()
-
-
-async def login_client(client):
-    await client.login(COC_EMAIL, COC_PASSWORD)
-
-
-async def fetch_clan(client, tag):
-    return await client.get_clan(tag)
-
-
-async def fetch_clan_members(client, tag):
-    return await client.get_members(tag)
-
-
-async def fetch_current_war(client, tag):
-    return await client.get_current_war(tag)
-
-
-async def fetch_war_log(client, tag):
-    return await client.get_war_log(tag, limit=20)
-
-
-async def fetch_raid_seasons(client, tag):
-    return await client.get_raid_log(tag, limit=10)
-
-
-async def fetch_player(client, tag):
-    return await client.get_player(tag)
 
 
 def normalize_tag(tag):
@@ -102,13 +61,12 @@ def get_clan():
     if not CLAN_TAG:
         return error_response("CLAN_TAG environment variable is not set", 503)
 
+    async def _fetch():
+        async with coc.Client() as client:
+            await client.login(COC_EMAIL, COC_PASSWORD)
+            return await client.get_clan(normalize_tag(CLAN_TAG))
+
     try:
-        client = get_coc_client()
-
-        async def _fetch():
-            await login_client(client)
-            return await fetch_clan(client, normalize_tag(CLAN_TAG))
-
         clan = run_async(_fetch())
 
         location = None
@@ -171,13 +129,12 @@ def get_clan_members():
     if not CLAN_TAG:
         return error_response("CLAN_TAG environment variable is not set", 503)
 
+    async def _fetch():
+        async with coc.Client() as client:
+            await client.login(COC_EMAIL, COC_PASSWORD)
+            return await client.get_members(normalize_tag(CLAN_TAG))
+
     try:
-        client = get_coc_client()
-
-        async def _fetch():
-            await login_client(client)
-            return await fetch_clan_members(client, normalize_tag(CLAN_TAG))
-
         members = run_async(_fetch())
 
         data = []
@@ -220,13 +177,12 @@ def get_current_war():
     if not CLAN_TAG:
         return error_response("CLAN_TAG environment variable is not set", 503)
 
+    async def _fetch():
+        async with coc.Client() as client:
+            await client.login(COC_EMAIL, COC_PASSWORD)
+            return await client.get_current_war(normalize_tag(CLAN_TAG))
+
     try:
-        client = get_coc_client()
-
-        async def _fetch():
-            await login_client(client)
-            return await fetch_current_war(client, normalize_tag(CLAN_TAG))
-
         war = run_async(_fetch())
 
         if war is None or str(war.state) == "notInWar":
@@ -303,13 +259,12 @@ def get_war_log():
     if not CLAN_TAG:
         return error_response("CLAN_TAG environment variable is not set", 503)
 
+    async def _fetch():
+        async with coc.Client() as client:
+            await client.login(COC_EMAIL, COC_PASSWORD)
+            return await client.get_war_log(normalize_tag(CLAN_TAG), limit=20)
+
     try:
-        client = get_coc_client()
-
-        async def _fetch():
-            await login_client(client)
-            return await fetch_war_log(client, normalize_tag(CLAN_TAG))
-
         wars = run_async(_fetch())
 
         data = []
@@ -363,13 +318,12 @@ def get_capital_raid_seasons():
     if not CLAN_TAG:
         return error_response("CLAN_TAG environment variable is not set", 503)
 
+    async def _fetch():
+        async with coc.Client() as client:
+            await client.login(COC_EMAIL, COC_PASSWORD)
+            return await client.get_raid_log(normalize_tag(CLAN_TAG), limit=10)
+
     try:
-        client = get_coc_client()
-
-        async def _fetch():
-            await login_client(client)
-            return await fetch_raid_seasons(client, normalize_tag(CLAN_TAG))
-
         seasons = run_async(_fetch())
 
         data = []
@@ -391,7 +345,6 @@ def get_capital_raid_seasons():
                     "attacked": attack_count > 0,
                 })
 
-            all_tags = {m["tag"] for m in members_data if m["tag"]}
             not_attacked = [m for m in members_data if m["tag"] not in members_attacked]
 
             districts_data = []
@@ -455,14 +408,14 @@ def get_player(tag):
     if not COC_EMAIL or not COC_PASSWORD:
         return error_response("COC_EMAIL and COC_PASSWORD environment variables are not set", 503)
 
+    normalized = normalize_tag(tag)
+
+    async def _fetch():
+        async with coc.Client() as client:
+            await client.login(COC_EMAIL, COC_PASSWORD)
+            return await client.get_player(normalized)
+
     try:
-        normalized = normalize_tag(tag)
-        client = get_coc_client()
-
-        async def _fetch():
-            await login_client(client)
-            return await fetch_player(client, normalized)
-
         player = run_async(_fetch())
 
         def serialize_troops(troops):
