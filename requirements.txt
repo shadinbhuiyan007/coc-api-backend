@@ -1,5 +1,4 @@
 flask>=3.0.0
 flask-cors>=4.0.0
 coc.py>=4.0.0
-nest_asyncio>=1.6.0
 aiohttp>=3.9.0
