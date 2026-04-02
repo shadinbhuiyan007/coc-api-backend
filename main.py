@@ -15,9 +15,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app, origins="*")
 
-COC_EMAIL = os.environ.get("COC_EMAIL")
-COC_PASSWORD = os.environ.get("COC_PASSWORD")
-CLAN_TAG = os.environ.get("CLAN_TAG", "")
+COC_EMAIL = "mehadishadin007@gmail.com"
+COC_PASSWORD = "23241893$$Ss"
+CLAN_TAG = "GVUPYPLC"
 
 
 def run_async(coro):
