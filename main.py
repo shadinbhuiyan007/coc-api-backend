@@ -3,8 +3,10 @@ import asyncio
 import logging
 import threading
 import time
+import urllib.parse
 from datetime import datetime
 
+import aiohttp
 import coc
 from flask import Flask, jsonify
 from flask_cors import CORS
@@ -171,6 +173,122 @@ def get_clan_members():
         return error_response("Invalid Clash of Clans credentials", 401)
     except Exception as e:
         logger.exception("Error fetching clan members")
+        return error_response(str(e))
+
+
+@app.route("/clan/search/<path:tag>", methods=["GET"])
+def search_clan(tag):
+    if not COC_EMAIL or not COC_PASSWORD:
+        return error_response("COC_EMAIL and COC_PASSWORD environment variables are not set", 503)
+
+    normalized = normalize_tag(tag)
+
+    async def _fetch():
+        async with coc.Client() as client:
+            await client.login(COC_EMAIL, COC_PASSWORD)
+            return await client.get_clan(normalized)
+
+    try:
+        clan = run_async(_fetch())
+
+        location = None
+        if clan.location:
+            location = {
+                "id": clan.location.id,
+                "name": clan.location.name,
+                "is_country": clan.location.is_country,
+                "country_code": getattr(clan.location, "country_code", None)
+            }
+
+        districts = clan.capital_districts or []
+        capital_hall_level = None
+        for d in districts:
+            if d.name.lower() == "capital peak":
+                capital_hall_level = d.hall_level
+                break
+
+        clan_capital = {
+            "capital_hall_level": capital_hall_level,
+            "districts": [
+                {"name": d.name, "district_hall_level": d.hall_level}
+                for d in districts
+            ],
+        }
+
+        data = {
+            "name": clan.name,
+            "tag": clan.tag,
+            "level": clan.level,
+            "description": clan.description,
+            "points": clan.points,
+            "war_frequency": str(clan.war_frequency) if clan.war_frequency else None,
+            "member_count": clan.member_count,
+            "location": location,
+            "type": str(clan.type) if clan.type else None,
+            "required_trophies": clan.required_trophies,
+            "war_wins": clan.war_wins,
+            "war_losses": clan.war_losses,
+            "war_ties": clan.war_ties,
+            "war_win_streak": clan.war_win_streak,
+            "is_war_log_public": clan.public_war_log,
+            "badge_url": clan.badge.large if clan.badge else None,
+            "clan_capital": clan_capital,
+        }
+        return jsonify(data)
+    except coc.NotFound:
+        return error_response(f"Clan '{tag}' not found", 404)
+    except coc.InvalidCredentials:
+        return error_response("Invalid Clash of Clans credentials", 401)
+    except Exception as e:
+        logger.exception("Error fetching clan by tag")
+        return error_response(str(e))
+
+
+@app.route("/clan/search/<path:tag>/members", methods=["GET"])
+def search_clan_members(tag):
+    if not COC_EMAIL or not COC_PASSWORD:
+        return error_response("COC_EMAIL and COC_PASSWORD environment variables are not set", 503)
+
+    normalized = normalize_tag(tag)
+
+    async def _fetch():
+        async with coc.Client() as client:
+            await client.login(COC_EMAIL, COC_PASSWORD)
+            return await client.get_members(normalized)
+
+    try:
+        members = run_async(_fetch())
+
+        data = []
+        for m in members:
+            last_seen = None
+            if hasattr(m, "last_seen") and m.last_seen:
+                try:
+                    last_seen = m.last_seen.isoformat()
+                except Exception:
+                    last_seen = str(m.last_seen)
+
+            data.append({
+                "name": m.name,
+                "tag": m.tag,
+                "role": str(m.role) if m.role else None,
+                "town_hall_level": m.town_hall,
+                "trophies": m.trophies,
+                "builder_base_trophies": m.builder_base_trophies,
+                "donations": m.donations,
+                "donations_received": m.received,
+                "last_seen": last_seen,
+                "war_opted_in": getattr(m, "war_opted_in", None),
+                "league": str(m.league) if getattr(m, "league", None) else None,
+            })
+
+        return jsonify(data)
+    except coc.NotFound:
+        return error_response(f"Clan '{tag}' not found", 404)
+    except coc.InvalidCredentials:
+        return error_response("Invalid Clash of Clans credentials", 401)
+    except Exception as e:
+        logger.exception("Error fetching clan members by tag")
         return error_response(str(e))
 
 
@@ -417,10 +535,17 @@ def get_player(tag):
     async def _fetch():
         async with coc.Client() as client:
             await client.login(COC_EMAIL, COC_PASSWORD)
-            return await client.get_player(normalized)
+            player = await client.get_player(normalized)
+            key = client.http._keys[0]
+            encoded_tag = urllib.parse.quote(normalized)
+            url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, headers={"Authorization": f"Bearer {key}"}) as resp:
+                    raw_data = await resp.json()
+            return player, raw_data
 
     try:
-        player = run_async(_fetch())
+        player, raw_data = run_async(_fetch())
 
         def serialize_troops(troops):
             result = []
@@ -526,6 +651,24 @@ def get_player(tag):
         home_heroes = [h for h in (player.heroes or []) if not h.is_builder_base]
         builder_heroes = [h for h in (player.heroes or []) if h.is_builder_base]
 
+        serialized_home_heroes = serialize_heroes(home_heroes)
+        serialized_builder_heroes = serialize_heroes(builder_heroes)
+
+        known_names = {h["name"] for h in serialized_home_heroes + serialized_builder_heroes}
+        for rh in raw_data.get("heroes", []):
+            if rh.get("name") not in known_names:
+                entry = {
+                    "name": rh.get("name"),
+                    "level": rh.get("level"),
+                    "max_level": rh.get("maxLevel"),
+                    "village": rh.get("village", "home"),
+                    "equipment": [],
+                }
+                if rh.get("village") == "builderBase":
+                    serialized_builder_heroes.append(entry)
+                else:
+                    serialized_home_heroes.append(entry)
+
         data = {
             "name": player.name,
             "tag": player.tag,
@@ -549,8 +692,8 @@ def get_player(tag):
             "league": league_info,
             "legend_statistics": legend_statistics,
             "troops": serialize_troops(player.home_troops),
-            "heroes": serialize_heroes(home_heroes),
-            "builder_base_heroes": serialize_heroes(builder_heroes),
+            "heroes": serialized_home_heroes,
+            "builder_base_heroes": serialized_builder_heroes,
             "spells": serialize_spells(player.spells),
             "siege_machines": serialize_troops(player.siege_machines),
             "pets": serialize_pets(player.pets),
