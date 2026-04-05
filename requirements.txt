@@ -1,6 +1,6 @@
 flask>=3.0.0
 flask-cors>=4.0.0
-coc.py>=4.0.0
+coc.py==3.9.1
 aiohttp>=3.9.0
 gunicorn>=21.2.0
 gevent>=23.9.0
