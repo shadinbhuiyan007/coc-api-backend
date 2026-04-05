@@ -45,6 +45,32 @@ def error_response(message, status=500):
     return jsonify({"error": message}), status
 
 
+def serialize_member(m):
+    last_seen = None
+    if hasattr(m, "last_seen") and m.last_seen:
+        try:
+            last_seen = m.last_seen.isoformat()
+        except Exception:
+            last_seen = str(m.last_seen)
+
+    return {
+        "name": m.name,
+        "tag": m.tag,
+        "role": str(m.role) if m.role else None,
+        "town_hall_level": m.town_hall,
+        "exp_level": getattr(m, "exp_level", None),
+        "builder_hall_level": getattr(m, "builder_hall", None),
+        "trophies": m.trophies,
+        "builder_base_trophies": m.builder_base_trophies,
+        "donations": m.donations,
+        "donations_received": m.received,
+        "last_seen": last_seen,
+        "war_opted_in": getattr(m, "war_opted_in", None),
+        "league": str(m.league) if getattr(m, "league", None) else None,
+        "league_icon_url": m.league.icon.medium if getattr(m, "league", None) and m.league.icon else None,
+    }
+
+
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({"message": "CoC API is running"})
@@ -58,6 +84,52 @@ def health():
         "clan_tag": CLAN_TAG,
         "credentials_configured": bool(COC_EMAIL and COC_PASSWORD)
     })
+
+
+def build_clan_data(clan):
+    location = None
+    if clan.location:
+        location = {
+            "id": clan.location.id,
+            "name": clan.location.name,
+            "is_country": clan.location.is_country,
+            "country_code": getattr(clan.location, "country_code", None)
+        }
+
+    districts = clan.capital_districts or []
+    capital_hall_level = None
+    for d in districts:
+        if d.name.lower() == "capital peak":
+            capital_hall_level = d.hall_level
+            break
+
+    clan_capital = {
+        "capital_hall_level": capital_hall_level,
+        "districts": [
+            {"name": d.name, "district_hall_level": d.hall_level}
+            for d in districts
+        ],
+    }
+
+    return {
+        "name": clan.name,
+        "tag": clan.tag,
+        "level": clan.level,
+        "description": clan.description,
+        "points": clan.points,
+        "war_frequency": str(clan.war_frequency) if clan.war_frequency else None,
+        "member_count": clan.member_count,
+        "location": location,
+        "type": str(clan.type) if clan.type else None,
+        "required_trophies": clan.required_trophies,
+        "war_wins": clan.war_wins,
+        "war_losses": clan.war_losses,
+        "war_ties": clan.war_ties,
+        "war_win_streak": clan.war_win_streak,
+        "is_war_log_public": clan.public_war_log,
+        "badge_url": clan.badge.large if clan.badge else None,
+        "clan_capital": clan_capital,
+    }
 
 
 @app.route("/clan", methods=["GET"])
@@ -74,51 +146,7 @@ def get_clan():
 
     try:
         clan = run_async(_fetch())
-
-        location = None
-        if clan.location:
-            location = {
-                "id": clan.location.id,
-                "name": clan.location.name,
-                "is_country": clan.location.is_country,
-                "country_code": getattr(clan.location, "country_code", None)
-            }
-
-        districts = clan.capital_districts or []
-        capital_hall_level = None
-        for d in districts:
-            if d.name.lower() == "capital peak":
-                capital_hall_level = d.hall_level
-                break
-
-        clan_capital = {
-            "capital_hall_level": capital_hall_level,
-            "districts": [
-                {"name": d.name, "district_hall_level": d.hall_level}
-                for d in districts
-            ],
-        }
-
-        data = {
-            "name": clan.name,
-            "tag": clan.tag,
-            "level": clan.level,
-            "description": clan.description,
-            "points": clan.points,
-            "war_frequency": str(clan.war_frequency) if clan.war_frequency else None,
-            "member_count": clan.member_count,
-            "location": location,
-            "type": str(clan.type) if clan.type else None,
-            "required_trophies": clan.required_trophies,
-            "war_wins": clan.war_wins,
-            "war_losses": clan.war_losses,
-            "war_ties": clan.war_ties,
-            "war_win_streak": clan.war_win_streak,
-            "is_war_log_public": clan.public_war_log,
-            "badge_url": clan.badge.large if clan.badge else None,
-            "clan_capital": clan_capital,
-        }
-        return jsonify(data)
+        return jsonify(build_clan_data(clan))
     except coc.NotFound:
         return error_response(f"Clan '{CLAN_TAG}' not found", 404)
     except coc.InvalidCredentials:
@@ -142,31 +170,7 @@ def get_clan_members():
 
     try:
         members = run_async(_fetch())
-
-        data = []
-        for m in members:
-            last_seen = None
-            if hasattr(m, "last_seen") and m.last_seen:
-                try:
-                    last_seen = m.last_seen.isoformat()
-                except Exception:
-                    last_seen = str(m.last_seen)
-
-            data.append({
-                "name": m.name,
-                "tag": m.tag,
-                "role": str(m.role) if m.role else None,
-                "town_hall_level": m.town_hall,
-                "trophies": m.trophies,
-                "builder_base_trophies": m.builder_base_trophies,
-                "donations": m.donations,
-                "donations_received": m.received,
-                "last_seen": last_seen,
-                "war_opted_in": getattr(m, "war_opted_in", None),
-                "league": str(m.league) if getattr(m, "league", None) else None,
-            })
-
-        return jsonify(data)
+        return jsonify([serialize_member(m) for m in members])
     except coc.NotFound:
         return error_response(f"Clan '{CLAN_TAG}' not found", 404)
     except coc.InvalidCredentials:
@@ -190,51 +194,7 @@ def search_clan(tag):
 
     try:
         clan = run_async(_fetch())
-
-        location = None
-        if clan.location:
-            location = {
-                "id": clan.location.id,
-                "name": clan.location.name,
-                "is_country": clan.location.is_country,
-                "country_code": getattr(clan.location, "country_code", None)
-            }
-
-        districts = clan.capital_districts or []
-        capital_hall_level = None
-        for d in districts:
-            if d.name.lower() == "capital peak":
-                capital_hall_level = d.hall_level
-                break
-
-        clan_capital = {
-            "capital_hall_level": capital_hall_level,
-            "districts": [
-                {"name": d.name, "district_hall_level": d.hall_level}
-                for d in districts
-            ],
-        }
-
-        data = {
-            "name": clan.name,
-            "tag": clan.tag,
-            "level": clan.level,
-            "description": clan.description,
-            "points": clan.points,
-            "war_frequency": str(clan.war_frequency) if clan.war_frequency else None,
-            "member_count": clan.member_count,
-            "location": location,
-            "type": str(clan.type) if clan.type else None,
-            "required_trophies": clan.required_trophies,
-            "war_wins": clan.war_wins,
-            "war_losses": clan.war_losses,
-            "war_ties": clan.war_ties,
-            "war_win_streak": clan.war_win_streak,
-            "is_war_log_public": clan.public_war_log,
-            "badge_url": clan.badge.large if clan.badge else None,
-            "clan_capital": clan_capital,
-        }
-        return jsonify(data)
+        return jsonify(build_clan_data(clan))
     except coc.NotFound:
         return error_response(f"Clan '{tag}' not found", 404)
     except coc.InvalidCredentials:
@@ -258,31 +218,7 @@ def search_clan_members(tag):
 
     try:
         members = run_async(_fetch())
-
-        data = []
-        for m in members:
-            last_seen = None
-            if hasattr(m, "last_seen") and m.last_seen:
-                try:
-                    last_seen = m.last_seen.isoformat()
-                except Exception:
-                    last_seen = str(m.last_seen)
-
-            data.append({
-                "name": m.name,
-                "tag": m.tag,
-                "role": str(m.role) if m.role else None,
-                "town_hall_level": m.town_hall,
-                "trophies": m.trophies,
-                "builder_base_trophies": m.builder_base_trophies,
-                "donations": m.donations,
-                "donations_received": m.received,
-                "last_seen": last_seen,
-                "war_opted_in": getattr(m, "war_opted_in", None),
-                "league": str(m.league) if getattr(m, "league", None) else None,
-            })
-
-        return jsonify(data)
+        return jsonify([serialize_member(m) for m in members])
     except coc.NotFound:
         return error_response(f"Clan '{tag}' not found", 404)
     except coc.InvalidCredentials:
@@ -536,16 +472,28 @@ def get_player(tag):
         async with coc.Client() as client:
             await client.login(COC_EMAIL, COC_PASSWORD)
             player = await client.get_player(normalized)
-            key = client.http._keys[0]
-            encoded_tag = urllib.parse.quote(normalized)
-            url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, headers={"Authorization": f"Bearer {key}"}) as resp:
-                    raw_data = await resp.json()
-            return player, raw_data
+
+            raw_heroes = []
+            try:
+                keys = getattr(client.http, '_keys', [])
+                if not keys:
+                    keys = getattr(client.http, 'keys', [])
+                if keys:
+                    key = keys[0]
+                    encoded_tag = urllib.parse.quote(normalized)
+                    url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(url, headers={"Authorization": f"Bearer {key}"}) as resp:
+                            if resp.status == 200:
+                                raw_data = await resp.json()
+                                raw_heroes = raw_data.get("heroes", [])
+            except Exception as e:
+                logger.warning(f"Direct API call failed: {e}")
+
+            return player, raw_heroes
 
     try:
-        player, raw_data = run_async(_fetch())
+        player, raw_heroes = run_async(_fetch())
 
         def serialize_troops(troops):
             result = []
@@ -655,7 +603,7 @@ def get_player(tag):
         serialized_builder_heroes = serialize_heroes(builder_heroes)
 
         known_names = {h["name"] for h in serialized_home_heroes + serialized_builder_heroes}
-        for rh in raw_data.get("heroes", []):
+        for rh in raw_heroes:
             if rh.get("name") not in known_names:
                 entry = {
                     "name": rh.get("name"),
