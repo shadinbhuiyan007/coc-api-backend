@@ -475,18 +475,41 @@ def get_player(tag):
 
             raw_heroes = []
             try:
+                # Try multiple ways to get the API key string
+                api_key_str = None
+
+                # Method 1: _keys list of Key objects
                 keys = getattr(client.http, '_keys', [])
-                if not keys:
-                    keys = getattr(client.http, 'keys', [])
                 if keys:
-                    key = keys[0]
+                    key_obj = keys[0]
+                    # Key object may have .key or .token attribute, or be a string itself
+                    if isinstance(key_obj, str):
+                        api_key_str = key_obj
+                    else:
+                        api_key_str = getattr(key_obj, 'key', None) or getattr(key_obj, 'token', None) or str(key_obj)
+
+                # Method 2: keys attribute
+                if not api_key_str:
+                    keys2 = getattr(client.http, 'keys', [])
+                    if keys2:
+                        key_obj2 = keys2[0]
+                        if isinstance(key_obj2, str):
+                            api_key_str = key_obj2
+                        else:
+                            api_key_str = getattr(key_obj2, 'key', None) or getattr(key_obj2, 'token', None) or str(key_obj2)
+
+                if api_key_str:
                     encoded_tag = urllib.parse.quote(normalized)
                     url = f"https://api.clashofclans.com/v1/players/{encoded_tag}"
                     async with aiohttp.ClientSession() as session:
-                        async with session.get(url, headers={"Authorization": f"Bearer {key}"}) as resp:
+                        async with session.get(url, headers={"Authorization": f"Bearer {api_key_str}"}) as resp:
                             if resp.status == 200:
                                 raw_data = await resp.json()
                                 raw_heroes = raw_data.get("heroes", [])
+                            else:
+                                logger.warning(f"Direct API returned status {resp.status}")
+                else:
+                    logger.warning("Could not extract API key string")
             except Exception as e:
                 logger.warning(f"Direct API call failed: {e}")
 
