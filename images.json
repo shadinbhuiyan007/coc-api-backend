@@ -1,10 +1,5 @@
 {
-  "heroes": {},
-  "troops": {},
-  "spells": {},
-  "siege_machines": {},
-  "pets": {},
-  "equipment": {},
-  "townhalls": {},
-  "leagues": {}
+  "heroes": {
+    "Barbarian King": "https://res.cloudinary.com/djsemaanf/image/upload/v1775705648/coc/heroes/Barbarian_King.webp"
+  }
 }
