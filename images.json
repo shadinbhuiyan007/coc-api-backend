@@ -2,7 +2,8 @@
   "heroes": {},
   "troops": {
     "Barbarian": "https://res.cloudinary.com/djsemaanf/image/upload/v1777632378/coc/troops/Barbarian.png",
-    "Archer": "https://res.cloudinary.com/djsemaanf/image/upload/v1777644442/coc/troops/Archer.png"
+    "Archer": "https://res.cloudinary.com/djsemaanf/image/upload/v1777644442/coc/troops/Archer.png",
+    "Balloon": "https://res.cloudinary.com/djsemaanf/image/upload/v1777644456/coc/troops/Balloon.png"
   },
   "spells": {},
   "pets": {},
