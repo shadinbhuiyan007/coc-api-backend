@@ -1,6 +1,7 @@
 {
   "heroes": {
-    "Barbarian King": "https://res.cloudinary.com/djsemaanf/image/upload/v1777646139/coc/heroes/Barbarian_King.png"
+    "Barbarian King": "https://res.cloudinary.com/djsemaanf/image/upload/v1777646139/coc/heroes/Barbarian_King.png",
+    "Archer Queen": "https://res.cloudinary.com/djsemaanf/image/upload/v1777646149/coc/heroes/Archer_Queen.png"
   },
   "troops": {
     "Barbarian": "https://res.cloudinary.com/djsemaanf/image/upload/v1777632378/coc/troops/Barbarian.png",
