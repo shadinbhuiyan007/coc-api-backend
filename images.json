@@ -1,5 +1,11 @@
 {
+  "heroes": {},
   "troops": {
     "Barbarian": "https://res.cloudinary.com/djsemaanf/image/upload/v1777632378/coc/troops/Barbarian.png"
-  }
+  },
+  "spells": {},
+  "pets": {},
+  "siege_machines": {},
+  "equipment": {},
+  "townhalls": {}
 }
