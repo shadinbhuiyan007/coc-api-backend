@@ -29,5 +29,7 @@
   "pets": {},
   "siege_machines": {},
   "equipment": {},
-  "townhalls": {}
+  "townhalls": {
+    "15": "https://res.cloudinary.com/djsemaanf/image/upload/v1778221008/coc/townhalls/15.webp"
+  }
 }
