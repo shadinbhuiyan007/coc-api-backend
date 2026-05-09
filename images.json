@@ -28,7 +28,9 @@
     "Furnace": "https://res.cloudinary.com/djsemaanf/image/upload/v1777647091/coc/troops/Furnace.png"
   },
   "spells": {},
-  "pets": {},
+  "pets": {
+    "L.A.S.S.I": "https://res.cloudinary.com/djsemaanf/image/upload/v1778323567/coc/pets/L.A.S.S.I.png"
+  },
   "siege_machines": {},
   "equipment": {},
   "townhalls": {
