@@ -31,7 +31,8 @@
   "pets": {
     "L.A.S.S.I": "https://res.cloudinary.com/djsemaanf/image/upload/v1778323567/coc/pets/L.A.S.S.I.png",
     "Mighty Yak": "https://res.cloudinary.com/djsemaanf/image/upload/v1778323586/coc/pets/Mighty_Yak.png",
-    "Unicorn": "https://res.cloudinary.com/djsemaanf/image/upload/v1778323597/coc/pets/Unicorn.png"
+    "Unicorn": "https://res.cloudinary.com/djsemaanf/image/upload/v1778323597/coc/pets/Unicorn.png",
+    "Frosty": "https://res.cloudinary.com/djsemaanf/image/upload/v1778323609/coc/pets/Frosty.png"
   },
   "siege_machines": {},
   "equipment": {},
