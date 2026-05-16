@@ -26,6 +26,30 @@ COC_API_URL = "https://api.clashofclans.com/v1"
 _api_key = None
 _api_key_lock = threading.Lock()
 
+# Super troop names — সব super troops এর নাম
+SUPER_TROOP_NAMES = {
+    "Super Barbarian", "Super Archer", "Super Giant", "Sneaky Goblin",
+    "Super Wall Breaker", "Rocket Balloon", "Inferno Dragon", "Super Witch",
+    "Ice Hound", "Super Bowler", "Super Dragon", "Super Minion",
+    "Super Valkyrie", "Super Witch", "Super Hog Rider", "Super Miner",
+    "Super Hound", "Super P.E.K.K.A", "Super Yeti", "Super Lava Hound",
+    "Super Goblin", "Super Wizard", "Super Archer", "Flying Fortress",
+}
+
+# Siege machine names — সব siege machines এর নাম
+SIEGE_MACHINE_NAMES = {
+    "Wall Wrecker", "Battle Blimp", "Stone Slammer", "Siege Barracks",
+    "Log Launcher", "Flame Flinger", "Battle Drill", "Troop Launcher",
+    "Sky Wagon",
+}
+
+# Pet names — সব pets এর নাম
+PET_NAMES = {
+    "L.A.S.S.I", "Electro Owl", "Mighty Yak", "Unicorn",
+    "Frosty", "Diggy", "Poison Lizard", "Phoenix",
+    "Spirit Fox", "Angry Jelly", "Sneezy", "Greedy Raven",
+}
+
 
 def normalize_tag(tag):
     if not tag.startswith("#"):
@@ -66,16 +90,13 @@ async def get_current_ip():
 
 async def login_and_get_key():
     global _api_key
-
     current_ip = await get_current_ip()
     if not current_ip:
         raise Exception("Could not get current server IP")
-
     logger.info(f"Server IP: {current_ip}")
 
     jar = aiohttp.CookieJar()
     async with aiohttp.ClientSession(cookie_jar=jar) as session:
-
         async with session.post(
             f"{COC_DEV_URL}/api/login",
             json={"email": COC_EMAIL, "password": COC_PASSWORD},
@@ -97,7 +118,6 @@ async def login_and_get_key():
 
         valid_key = None
         keys_to_revoke = []
-
         for k in existing_keys:
             cidr = k.get("cidrRanges", [])
             if current_ip in cidr or f"{current_ip}/32" in cidr:
@@ -117,7 +137,6 @@ async def login_and_get_key():
                             headers={"Content-Type": "application/json"},
                             timeout=aiohttp.ClientTimeout(total=10)
                         )
-                        logger.info(f"Revoked old key: {kid}")
                     except Exception:
                         pass
 
@@ -141,7 +160,6 @@ async def login_and_get_key():
 
         with _api_key_lock:
             _api_key = valid_key
-
         return valid_key
 
 
@@ -244,12 +262,13 @@ def build_member(m):
         "donations_received": m.get("donationsReceived", 0),
         "last_seen": m.get("lastSeen"),
         "war_opted_in": m.get("warPreference") == "in",
-        "league": league.get("name"),
-        "league_icon_url": (league.get("iconUrls") or {}).get("medium"),
+        "league": league.get("name") if league else None,
+        "league_icon_url": (league.get("iconUrls") or {}).get("medium") if league else None,
     }
 
 
 def build_player(p):
+    # League — নতুন rank system সহ সব
     league = p.get("league") or {}
     league_info = {
         "id": league.get("id"),
@@ -257,6 +276,7 @@ def build_player(p):
         "icon_url": (league.get("iconUrls") or {}).get("medium"),
     } if league else None
 
+    # Clan
     clan = p.get("clan") or {}
     clan_info = {
         "name": clan.get("name"),
@@ -265,10 +285,15 @@ def build_player(p):
         "badge_url": (clan.get("badgeUrls") or {}).get("large"),
     } if clan else None
 
+    # Heroes + Equipment
     home_heroes, builder_heroes = [], []
     for h in p.get("heroes", []):
         equipment = [
-            {"name": eq.get("name"), "level": eq.get("level", 0), "max_level": eq.get("maxLevel", 0)}
+            {
+                "name": eq.get("name"),
+                "level": eq.get("level", 0),
+                "max_level": eq.get("maxLevel", 0),
+            }
             for eq in h.get("equipment", [])
         ]
         hero = {
@@ -283,51 +308,76 @@ def build_player(p):
         else:
             home_heroes.append(hero)
 
-    home_troops, builder_troops, super_troops = [], [], []
+    # Troops — API তে সব একসাথে আসে
+    # super troops, siege machines, pets আলাদা করতে হবে
+    home_troops = []
+    super_troops = []
+    siege_machines = []
+    pets = []
+
     for t in p.get("troops", []):
+        name = t.get("name", "")
         item = {
-            "name": t.get("name"),
+            "name": name,
             "level": t.get("level", 0),
             "max_level": t.get("maxLevel", 0),
             "village": t.get("village", "home"),
         }
-        if t.get("village") == "builderBase":
-            builder_troops.append(item)
-        elif t.get("superTroopIsActive", False):
+        if name in PET_NAMES:
+            pets.append(item)
+        elif name in SIEGE_MACHINE_NAMES:
+            siege_machines.append(item)
+        elif name in SUPER_TROOP_NAMES or t.get("superTroopIsActive", False):
             super_troops.append(item)
-        else:
+        elif t.get("village") == "home":
             home_troops.append(item)
 
+    # Builder troops
+    builder_troops = [
+        {
+            "name": t.get("name"),
+            "level": t.get("level", 0),
+            "max_level": t.get("maxLevel", 0),
+            "village": "builderBase",
+        }
+        for t in p.get("troops", [])
+        if t.get("village") == "builderBase"
+    ]
+
+    # Spells
     spells = [
-        {"name": s.get("name"), "level": s.get("level", 0),
-         "max_level": s.get("maxLevel", 0), "village": s.get("village", "home")}
+        {
+            "name": s.get("name"),
+            "level": s.get("level", 0),
+            "max_level": s.get("maxLevel", 0),
+            "village": s.get("village", "home"),
+        }
         for s in p.get("spells", [])
     ]
 
-    siege_machines = [
-        {"name": s.get("name"), "level": s.get("level", 0),
-         "max_level": s.get("maxLevel", 0), "village": s.get("village", "home")}
-        for s in p.get("siegeMachines", [])
-    ]
-
-    pets = [
-        {"name": pet.get("name"), "level": pet.get("level", 0),
-         "max_level": pet.get("maxLevel", 0), "village": pet.get("village", "home")}
-        for pet in p.get("pets", [])
-    ]
-
+    # Achievements
     achievements = [
-        {"name": a.get("name"), "stars": a.get("stars", 0),
-         "value": a.get("value", 0), "target": a.get("target", 0),
-         "info": a.get("info"), "village": a.get("village", "home")}
+        {
+            "name": a.get("name"),
+            "stars": a.get("stars", 0),
+            "value": a.get("value", 0),
+            "target": a.get("target", 0),
+            "info": a.get("info"),
+            "village": a.get("village", "home"),
+        }
         for a in p.get("achievements", [])
     ]
 
+    # Legend statistics
     ls = p.get("legendStatistics") or {}
     legend_statistics = None
     if ls:
         def parse_season(s):
-            return {"id": s.get("id"), "rank": s.get("rank"), "trophies": s.get("trophies")} if s else None
+            return {
+                "id": s.get("id"),
+                "rank": s.get("rank"),
+                "trophies": s.get("trophies")
+            } if s else None
         legend_statistics = {
             "legend_trophies": ls.get("legendTrophies"),
             "current_season": parse_season(ls.get("currentSeason")),
@@ -445,34 +495,42 @@ def get_current_war():
             return jsonify({"state": "notInWar"})
 
         def attacks(lst):
-            return [{"attacker_tag": a.get("attackerTag"), "defender_tag": a.get("defenderTag"),
-                     "stars": a.get("stars", 0), "destruction": a.get("destructionPercentage", 0),
-                     "order": a.get("order", 0)} for a in (lst or [])]
+            return [{
+                "attacker_tag": a.get("attackerTag"),
+                "defender_tag": a.get("defenderTag"),
+                "stars": a.get("stars", 0),
+                "destruction": a.get("destructionPercentage", 0),
+                "order": a.get("order", 0),
+            } for a in (lst or [])]
 
         def members(lst):
             result = []
             for m in (lst or []):
                 bo = m.get("bestOpponentAttack")
                 result.append({
-                    "name": m.get("name"), "tag": m.get("tag"),
+                    "name": m.get("name"),
+                    "tag": m.get("tag"),
                     "town_hall_level": m.get("townhallLevel"),
                     "map_position": m.get("mapPosition"),
                     "attacks": attacks(m.get("attacks", [])),
                     "best_opponent_attack": {
                         "attacker_tag": bo.get("attackerTag"),
                         "stars": bo.get("stars", 0),
-                        "destruction": bo.get("destructionPercentage", 0)
+                        "destruction": bo.get("destructionPercentage", 0),
                     } if bo else None,
                 })
             return result
 
         def side(key):
             s = war.get(key, {})
-            return {"name": s.get("name"), "tag": s.get("tag"),
-                    "stars": s.get("stars", 0),
-                    "destruction": s.get("destructionPercentage", 0),
-                    "attacks_used": s.get("attacks", 0),
-                    "members": members(s.get("members", []))}
+            return {
+                "name": s.get("name"),
+                "tag": s.get("tag"),
+                "stars": s.get("stars", 0),
+                "destruction": s.get("destructionPercentage", 0),
+                "attacks_used": s.get("attacks", 0),
+                "members": members(s.get("members", [])),
+            }
 
         return jsonify({
             "state": war.get("state"),
@@ -499,16 +557,21 @@ def get_war_log():
         for w in data.get("items", []):
             def side(key):
                 s = w.get(key, {})
-                return {"name": s.get("name"), "tag": s.get("tag"),
-                        "stars": s.get("stars", 0),
-                        "destruction": s.get("destructionPercentage", 0),
-                        "attacks_used": s.get("attacks", 0),
-                        "exp_earned": s.get("expEarned")}
+                return {
+                    "name": s.get("name"),
+                    "tag": s.get("tag"),
+                    "stars": s.get("stars", 0),
+                    "destruction": s.get("destructionPercentage", 0),
+                    "attacks_used": s.get("attacks", 0),
+                    "exp_earned": s.get("expEarned"),
+                }
             wars.append({
-                "result": w.get("result"), "end_time": w.get("endTime"),
+                "result": w.get("result"),
+                "end_time": w.get("endTime"),
                 "team_size": w.get("teamSize"),
                 "attacks_per_member": w.get("attacksPerMember"),
-                "clan": side("clan"), "opponent": side("opponent"),
+                "clan": side("clan"),
+                "opponent": side("opponent"),
             })
         return jsonify(wars)
     except Exception as e:
@@ -533,7 +596,8 @@ def get_capital_raid_seasons():
                 if t and cnt > 0:
                     attacked.add(t)
                 members_data.append({
-                    "name": m.get("name"), "tag": t,
+                    "name": m.get("name"),
+                    "tag": t,
                     "attack_count": cnt,
                     "capital_resources_looted": m.get("capitalResourcesLooted", 0),
                     "attacked": cnt > 0,
@@ -543,9 +607,11 @@ def get_capital_raid_seasons():
             for raid in season.get("attackLog", []):
                 defender = raid.get("defender", {})
                 districts = [{
-                    "name": d.get("name"), "id": d.get("id"),
+                    "name": d.get("name"),
+                    "id": d.get("id"),
                     "destruction_percent": d.get("destructionPercent"),
-                    "stars": d.get("stars"), "attack_count": d.get("attackCount"),
+                    "stars": d.get("stars"),
+                    "attack_count": d.get("attackCount"),
                     "total_loot": d.get("totalLooted"),
                 } for d in raid.get("districts", [])]
                 attack_log.append({
@@ -603,5 +669,5 @@ def init_key():
 if __name__ == "__main__":
     threading.Thread(target=init_key, daemon=True).start()
     threading.Thread(target=keep_alive, daemon=True).start()
-    logger.info("Starting CoC Stats API - Direct Mode - port 5000")
+    logger.info("Starting CoC Stats API - Direct Mode")
     app.run(host="0.0.0.0", port=5000, debug=False)
