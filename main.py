@@ -26,7 +26,6 @@ COC_API_URL = "https://api.clashofclans.com/v1"
 _api_key = None
 _api_key_lock = threading.Lock()
 
-# Super troop names — সব super troops এর নাম
 SUPER_TROOP_NAMES = {
     "Super Barbarian", "Super Archer", "Super Giant", "Sneaky Goblin",
     "Super Wall Breaker", "Rocket Balloon", "Inferno Dragon", "Super Witch",
@@ -36,14 +35,12 @@ SUPER_TROOP_NAMES = {
     "Super Goblin", "Super Wizard", "Super Archer", "Flying Fortress",
 }
 
-# Siege machine names — সব siege machines এর নাম
 SIEGE_MACHINE_NAMES = {
     "Wall Wrecker", "Battle Blimp", "Stone Slammer", "Siege Barracks",
     "Log Launcher", "Flame Flinger", "Battle Drill", "Troop Launcher",
     "Sky Wagon",
 }
 
-# Pet names — সব pets এর নাম
 PET_NAMES = {
     "L.A.S.S.I", "Electro Owl", "Mighty Yak", "Unicorn",
     "Frosty", "Diggy", "Poison Lizard", "Phoenix",
@@ -268,7 +265,6 @@ def build_member(m):
 
 
 def build_player(p):
-    # League — নতুন rank system সহ সব
     league = p.get("league") or {}
     league_info = {
         "id": league.get("id"),
@@ -276,7 +272,6 @@ def build_player(p):
         "icon_url": (league.get("iconUrls") or {}).get("medium"),
     } if league else None
 
-    # Clan
     clan = p.get("clan") or {}
     clan_info = {
         "name": clan.get("name"),
@@ -285,7 +280,6 @@ def build_player(p):
         "badge_url": (clan.get("badgeUrls") or {}).get("large"),
     } if clan else None
 
-    # Heroes + Equipment
     home_heroes, builder_heroes = [], []
     for h in p.get("heroes", []):
         equipment = [
@@ -308,8 +302,6 @@ def build_player(p):
         else:
             home_heroes.append(hero)
 
-    # Troops — API তে সব একসাথে আসে
-    # super troops, siege machines, pets আলাদা করতে হবে
     home_troops = []
     super_troops = []
     siege_machines = []
@@ -332,7 +324,6 @@ def build_player(p):
         elif t.get("village") == "home":
             home_troops.append(item)
 
-    # Builder troops
     builder_troops = [
         {
             "name": t.get("name"),
@@ -344,7 +335,6 @@ def build_player(p):
         if t.get("village") == "builderBase"
     ]
 
-    # Spells
     spells = [
         {
             "name": s.get("name"),
@@ -355,7 +345,6 @@ def build_player(p):
         for s in p.get("spells", [])
     ]
 
-    # Achievements
     achievements = [
         {
             "name": a.get("name"),
@@ -368,7 +357,6 @@ def build_player(p):
         for a in p.get("achievements", [])
     ]
 
-    # Legend statistics
     ls = p.get("legendStatistics") or {}
     legend_statistics = None
     if ls:
@@ -419,6 +407,57 @@ def build_player(p):
     }
 
 
+def build_capital_seasons(data):
+    seasons = []
+    for season in data.get("items", []):
+        members_data = []
+        attacked = set()
+        for m in season.get("members", []):
+            cnt = m.get("attacks", 0)
+            t = m.get("tag")
+            if t and cnt > 0:
+                attacked.add(t)
+            members_data.append({
+                "name": m.get("name"),
+                "tag": t,
+                "attack_count": cnt,
+                "capital_resources_looted": m.get("capitalResourcesLooted", 0),
+                "attacked": cnt > 0,
+            })
+        not_attacked = [m for m in members_data if m.get("tag") not in attacked]
+        attack_log = []
+        for raid in season.get("attackLog", []):
+            defender = raid.get("defender", {})
+            districts = [{
+                "name": d.get("name"),
+                "id": d.get("id"),
+                "destruction_percent": d.get("destructionPercent"),
+                "stars": d.get("stars"),
+                "attack_count": d.get("attackCount"),
+                "total_loot": d.get("totalLooted"),
+            } for d in raid.get("districts", [])]
+            attack_log.append({
+                "opponent_name": defender.get("name"),
+                "opponent_tag": defender.get("tag"),
+                "districts": districts,
+            })
+        seasons.append({
+            "state": season.get("state"),
+            "start_time": season.get("startTime"),
+            "end_time": season.get("endTime"),
+            "total_loot": season.get("capitalTotalLoot", 0),
+            "offensive_reward": season.get("offensiveReward"),
+            "defensive_reward": season.get("defensiveReward"),
+            "raids_completed": season.get("raidsCompleted"),
+            "total_attacks": season.get("totalAttacks"),
+            "enemy_districts_destroyed": season.get("enemyDistrictsDestroyed"),
+            "members": members_data,
+            "members_not_attacked": not_attacked,
+            "attack_log": attack_log,
+        })
+    return seasons
+
+
 @app.route("/", methods=["GET"])
 def index():
     return jsonify({"message": "CoC Stats API - Direct Mode"})
@@ -457,6 +496,19 @@ def get_clan_members():
         return jsonify([build_member(m) for m in data.get("items", [])])
     except Exception as e:
         logger.exception("Error fetching members")
+        return error_response(str(e))
+
+
+@app.route("/clan/members/<path:tag>", methods=["GET"])
+def get_clan_members_by_tag(tag):
+    try:
+        enc = urllib.parse.quote(normalize_tag(tag))
+        data = run_async(coc_request(f"clans/{enc}/members"))
+        if not data:
+            return error_response(f"Clan '{tag}' not found", 404)
+        return jsonify([build_member(m) for m in data.get("items", [])])
+    except Exception as e:
+        logger.exception("Error fetching clan members by tag")
         return error_response(str(e))
 
 
@@ -586,56 +638,22 @@ def get_capital_raid_seasons():
         data = run_async(coc_request(f"clans/{tag}/capitalraidseasons", {"limit": 10}))
         if not data:
             return jsonify([])
-        seasons = []
-        for season in data.get("items", []):
-            members_data = []
-            attacked = set()
-            for m in season.get("members", []):
-                cnt = m.get("attacks", 0)
-                t = m.get("tag")
-                if t and cnt > 0:
-                    attacked.add(t)
-                members_data.append({
-                    "name": m.get("name"),
-                    "tag": t,
-                    "attack_count": cnt,
-                    "capital_resources_looted": m.get("capitalResourcesLooted", 0),
-                    "attacked": cnt > 0,
-                })
-            not_attacked = [m for m in members_data if m.get("tag") not in attacked]
-            attack_log = []
-            for raid in season.get("attackLog", []):
-                defender = raid.get("defender", {})
-                districts = [{
-                    "name": d.get("name"),
-                    "id": d.get("id"),
-                    "destruction_percent": d.get("destructionPercent"),
-                    "stars": d.get("stars"),
-                    "attack_count": d.get("attackCount"),
-                    "total_loot": d.get("totalLooted"),
-                } for d in raid.get("districts", [])]
-                attack_log.append({
-                    "opponent_name": defender.get("name"),
-                    "opponent_tag": defender.get("tag"),
-                    "districts": districts,
-                })
-            seasons.append({
-                "state": season.get("state"),
-                "start_time": season.get("startTime"),
-                "end_time": season.get("endTime"),
-                "total_loot": season.get("capitalTotalLoot", 0),
-                "offensive_reward": season.get("offensiveReward"),
-                "defensive_reward": season.get("defensiveReward"),
-                "raids_completed": season.get("raidsCompleted"),
-                "total_attacks": season.get("totalAttacks"),
-                "enemy_districts_destroyed": season.get("enemyDistrictsDestroyed"),
-                "members": members_data,
-                "members_not_attacked": not_attacked,
-                "attack_log": attack_log,
-            })
-        return jsonify(seasons)
+        return jsonify(build_capital_seasons(data))
     except Exception as e:
         logger.exception("Error fetching raid seasons")
+        return error_response(str(e))
+
+
+@app.route("/capital/raids/<path:tag>", methods=["GET"])
+def get_capital_raids_by_tag(tag):
+    try:
+        enc = urllib.parse.quote(normalize_tag(tag))
+        data = run_async(coc_request(f"clans/{enc}/capitalraidseasons", {"limit": 10}))
+        if not data:
+            return jsonify([])
+        return jsonify(build_capital_seasons(data))
+    except Exception as e:
+        logger.exception("Error fetching capital raids by tag")
         return error_response(str(e))
 
 
