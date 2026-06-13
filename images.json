@@ -65,6 +65,7 @@
     "18": "https://res.cloudinary.com/djsemaanf/image/upload/v1778232728/coc/townhalls/18.webp"
   },
   "siege": {
-    "Wall Wrecker": "https://res.cloudinary.com/djsemaanf/image/upload/v1781334656/coc/siege/Wall_Wrecker.png"
+    "Wall Wrecker": "https://res.cloudinary.com/djsemaanf/image/upload/v1781334656/coc/siege/Wall_Wrecker.png",
+    "Stone Slammer": "https://res.cloudinary.com/djsemaanf/image/upload/v1781334681/coc/siege/Stone_Slammer.webp"
   }
 }
