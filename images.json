@@ -26,7 +26,8 @@
     "Witch": "https://res.cloudinary.com/djsemaanf/image/upload/v1777645289/coc/troops/Witch.png",
     "Giant": "https://res.cloudinary.com/djsemaanf/image/upload/v1777645300/coc/troops/Giant.png",
     "Furnace": "https://res.cloudinary.com/djsemaanf/image/upload/v1777647091/coc/troops/Furnace.png",
-    "Minion": "https://res.cloudinary.com/djsemaanf/image/upload/v1781336089/coc/troops/Minion.png"
+    "Minion": "https://res.cloudinary.com/djsemaanf/image/upload/v1781336089/coc/troops/Minion.png",
+    "Golem": "https://res.cloudinary.com/djsemaanf/image/upload/v1781336104/coc/troops/Golem.png"
   },
   "spells": {},
   "pets": {
